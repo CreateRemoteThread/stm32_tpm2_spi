@@ -134,7 +134,7 @@ void readRegister(uint8_t addrByte1, uint8_t addrByte2,uint8_t readSize, uint8_t
 #define CS_LOW HAL_GPIO_WritePin(GPIOB,GPIO_PIN_4,0)
 #define CS_HIGH HAL_GPIO_WritePin(GPIOB,GPIO_PIN_4,1)
 
-void sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
+int sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
 {
   uint8_t readbuf[TPM2_BUFSIZE];
   printf("sendCommand Called\r\n");
@@ -285,7 +285,7 @@ void sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
   CS_LOW;
   writeRegister(0x00,0x00,1,"\x20");
   CS_HIGH;
-
+  return 10 + respsize;
 }
 
 int main(void)
@@ -369,9 +369,18 @@ int main(void)
 			  printf("Waiting...\r\n");
 			  HAL_Delay(1000);
 
-			  sendCommand("\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x44\x00",12,readbuf);
+			  sendCommand("\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x44\x00\x00",12,readbuf);
 			  printf("OK: ");
 			  for(temp2 = 0;temp2 < 10;temp2++ )
+			  {
+				  printf("%02x ",readbuf[temp2]);
+			  }
+			  printf("\r\n");
+
+			 // 80 01 00 00 00 0C 00 00 01 7B 00
+			  int respsize = sendCommand("\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x7b\x00\x10",12,readbuf);
+			  printf("OK: ");
+			  for(temp2 = 0;temp2 < respsize;temp2++ )
 			  {
 				  printf("%02x ",readbuf[temp2]);
 			  }
