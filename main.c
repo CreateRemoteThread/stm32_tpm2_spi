@@ -1,15 +1,13 @@
-// SPI bridge firmware
-
 #include "retarget.h"
 #include "main.h"
 #include <stdio.h>
 
 SPI_HandleTypeDef hspi1;
-
 UART_HandleTypeDef huart2;
 
-#define TIS_VERBOSE 0
-#define TPM2_BUFSIZE 128
+#define TIS_DEBUG printf
+#define TIS_DEBUG_LV2 printf
+#define TPM2_BUFSIZE 280
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -17,6 +15,10 @@ static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
 
 #define MAX_RETRIES 10
+
+uint8_t *TPM2_CC_CreatePrimary = "\x80\x02\x00\x00\x00\x5b\x00\x00\x01\x31\x40\x00\x00\x01\x00\x00\x00\x09\x40\x00\x00\x09\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x00\x00\x32\x00\x25\x00\x0b\x00\x06\x00\x72\x00\x00\x00\x06\x00\x80\x00\x43\x00\x20\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\x27\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55\x00\x00\x00\x00\x00\x00";
+uint8_t *TPM2_CC_Encrypt = "\x80\x02\x00\x00\x00\x42\x00\x00\x01\x64\x80\x00\x00\x00\x00\x00\x00\x09\x40\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x10\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff";
+uint8_t *TPM2_CC_Encrypt_Original = "\x80\x02\x00\x00\x00\x37\x00\x00\x01\x64\x80\x00\x00\x00\x00\x00\x00\x09\x40\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x10\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x05\x11\x22\x33\x44\x55";
 
 uint8_t unhexlify_nibble(uint8_t databyte)
 {
@@ -72,18 +74,18 @@ void writeRegister(uint8_t addrByte1,uint8_t addrByte2, uint8_t writeSize, uint8
 	}
 	int temp2 = 0;
 	HAL_SPI_TransmitReceive(&hspi1,dbuf,rbuf,tsize,HAL_MAX_DELAY);
-	printf("TX: ");
+	TIS_DEBUG("TX: ");
 	for(temp2 = 0;temp2 < tsize;temp2++ )
 	{
-		printf("%02x ",dbuf[temp2]);
+		TIS_DEBUG("%02x ",dbuf[temp2]);
 	}
-	printf("\r\n");
-	printf("RX: ");
+	TIS_DEBUG("\r\n");
+	TIS_DEBUG("RX: ");
 	for(temp2 = 0;temp2 < tsize;temp2++ )
 	{
-	    printf("%02x ",rbuf[temp2]);
+		TIS_DEBUG("%02x ",rbuf[temp2]);
 	}
-	printf("\r\n");
+	TIS_DEBUG("\r\n");
 	return;
 }
 
@@ -105,18 +107,18 @@ void readRegister(uint8_t addrByte1, uint8_t addrByte2,uint8_t readSize, uint8_t
 	int temp2 = 0;
 
 	HAL_SPI_TransmitReceive(&hspi1,dbuf,rbuf,tsize,HAL_MAX_DELAY);
-	printf("TX: ");
+	TIS_DEBUG("TX: ");
 	for(temp2 = 0;temp2 < tsize;temp2++ )
 	{
-		printf("%02x ",dbuf[temp2]);
+		TIS_DEBUG("%02x ",dbuf[temp2]);
 	}
-	printf("\r\n");
-	printf("RX: ");
+	TIS_DEBUG("\r\n");
+	TIS_DEBUG("RX: ");
 	for(temp2 = 0;temp2 < tsize;temp2++ )
 	{
-	    printf("%02x ",rbuf[temp2]);
+		TIS_DEBUG("%02x ",rbuf[temp2]);
 	}
-	printf("\r\n");
+	TIS_DEBUG("\r\n");
 
 	// memcpy
 	if(destbuf != NULL)
@@ -137,7 +139,7 @@ void readRegister(uint8_t addrByte1, uint8_t addrByte2,uint8_t readSize, uint8_t
 int sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
 {
   uint8_t readbuf[TPM2_BUFSIZE];
-  printf("sendCommand Called\r\n");
+  TIS_DEBUG_LV2("sendCommand Called\r\n");
   CS_LOW;
   // printf("Siezing locality...\r\n");
   readRegister(0x00,0x00,1,NULL);
@@ -158,42 +160,83 @@ int sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
 	  errcount += 1;
 	  if(errcount > 5)
 	  {
-		  printf("Failure (errcount > 5)...\r\n");
+		  printf("Failure (errcount > 5, precmd)...\r\n");
 		  while(1){};
 	  }
-	  printf("Waiting for cmdReady...\r\n");
+	  TIS_DEBUG_LV2("Waiting for cmdReady...\r\n");
 	  CS_LOW;
 	  readRegister(0x00,0x18,1,readbuf);
 	  CS_HIGH;
   }
 
 
-  printf("Checking TPM_STS_0.burstCount\r\n");
+  TIS_DEBUG_LV2("Checking TPM_STS_0.burstCount\r\n");
   CS_LOW;
   readRegister(0x00,0x18,4,readbuf);
   CS_HIGH;
 
-  printf("Writing all-but-one to 0x0024...\r\n");
-  CS_LOW;
-  writeRegister(0x00,0x24,cmdSize - 1,cmdFrame);// "\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x44\x00");
-  CS_HIGH;
-
-  printf("Checking Expect bit\r\n");
-  CS_LOW;
-  readRegister(0x00,0x18,1,readbuf);
-  CS_HIGH;
-  if((readbuf[4] & 0x08) != 0x08)
+  if((cmdSize - 1) < 63)
   {
-	  printf("Failure (expect bit incorrect)...\r\n");
-	  while(1){};
+	  TIS_DEBUG_LV2("Writing all-but-one to 0x0024...\r\n");
+	  CS_LOW;
+	  writeRegister(0x00,0x24,cmdSize - 1,cmdFrame);// "\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x44\x00");
+	  CS_HIGH;
+
+	  // NOTE: DELAY.
+	  TIS_DEBUG_LV2("Checking Expect bit\r\n");
+	  CS_LOW;
+	  readRegister(0x00,0x18,1,readbuf);
+	  CS_HIGH;
+	  if((readbuf[4] & 0x08) != 0x08)
+	  {
+		  printf("Failure (expect bit incorrect)...\r\n");
+		  while(1){};
+	  }
+  }
+  else
+  {
+	  printf("Entering extra long command frame\r\n");
+	  int remainingSize = cmdSize - 1;
+	  int writeHead = 0;
+	  int writeSize = 0;
+	  while(remainingSize > 0)
+	  {
+		  if(remainingSize >= 30)
+		  {
+			  remainingSize -= 30;
+			  writeSize = 30;
+		  }
+		  else
+		  {
+			  writeSize = remainingSize;
+			  remainingSize = 0;
+		  }
+		  TIS_DEBUG_LV2("REMAIN:%d, EXPCT:%d\r\n",remainingSize,cmdSize - 1);
+		  TIS_DEBUG_LV2("Transferring %d bytes to 0x0024\r\n",writeSize);
+		  CS_LOW;
+		  writeRegister(0x00,0x24,writeSize,cmdFrame + writeHead);// "\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x44\x00");
+		  CS_HIGH;
+
+		  HAL_Delay(10);
+		  TIS_DEBUG_LV2("Checking Expect bit\r\n");
+		  CS_LOW;
+		  readRegister(0x00,0x18,1,readbuf);
+		  CS_HIGH;
+		  if((readbuf[4] & 0x08) != 0x08)
+		  {
+		     printf("Failure (expect bit incorrect)...\r\n");
+		  	 while(1){};
+		  }
+		  writeHead += 30;
+	  }
   }
 
-  printf("Completing command...\r\n");
+  TIS_DEBUG_LV2("Completing command...\r\n");
   CS_LOW;
   writeRegister(0x00,0x24,1,cmdFrame + cmdSize - 1);
   CS_HIGH;
 
-  printf("Checking Expect bit (again)\r\n");
+  TIS_DEBUG_LV2("Checking Expect bit (again)\r\n");
   CS_LOW;
   readRegister(0x00,0x18,1,readbuf);
   CS_HIGH;
@@ -203,35 +246,37 @@ int sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
 	  while(1){};
   }
 
-  printf("Setting go bit\r\n");
+  TIS_DEBUG_LV2("Setting go bit\r\n");
   CS_LOW;
   writeRegister(0x00,0x18,1,"\x20");
   CS_HIGH;
 
   HAL_Delay(100);
 
+  errcount = 0;
   readbuf[4] = '\x00';
   while((readbuf[4] & 0x10) == 0)
   {
 	  errcount += 1;
-	  if(errcount > 5)
+	  if(errcount > 10)
 	  {
-		  printf("Failure (errcount > 5)...\r\n");
+		  printf("Failure (errcount > 10, postcmd)...\r\n");
 		  while(1){};
 	  }
-	  printf("Waiting for dataAvail...\r\n");
+	  HAL_Delay(50);
+	  TIS_DEBUG_LV2("Waiting for dataAvail...\r\n");
 	  CS_LOW;
 	  readRegister(0x00,0x18,1,readbuf);
 	  CS_HIGH;
   }
 
-  printf("Checking burst count\r\n");
+  TIS_DEBUG_LV2("Checking burst count\r\n");
   CS_LOW;
   readRegister(0x00,0x18,4,NULL);
   CS_HIGH;
 
   int i = 0;
-  printf("Reading reply header...\r\n");
+  TIS_DEBUG_LV2("Reading reply header...\r\n");
   CS_LOW;
   readRegister(0x00,0x24,10,readbuf);
   CS_HIGH;
@@ -240,7 +285,7 @@ int sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
 	  respBuf[i] = readbuf[i + 4];
   }
 
-  printf("Checking burst count\r\n");
+  TIS_DEBUG_LV2("Checking burst count\r\n");
   CS_LOW;
   readRegister(0x00,0x18,4,NULL);
   CS_HIGH;
@@ -248,36 +293,98 @@ int sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
   int respsize = readbuf[9] - 10;
   if(respsize == 0)
   {
-	  printf("Condition: response OK, do not need further reading...\r\n");
+	  TIS_DEBUG_LV2("Condition: response OK, do not need further reading...\r\n");
   }
   else
   {
-	  printf("Reading %d resp bytes...\r\n",respsize);
-  	  CS_LOW;
-  	  readRegister(0x00,0x24,respsize,readbuf);
-  	  CS_HIGH;
-  	  for(i = 0;i < respsize;i++)
-  	  {
-  		  respBuf[10+i] = readbuf[i + 4];
-  	  }
+	  if(respsize <= 63)
+	  {
+		  TIS_DEBUG_LV2("Reading %d resp bytes...\r\n",respsize);
+		  CS_LOW;
+		  readRegister(0x00,0x24,respsize,readbuf);
+		  CS_HIGH;
+		  for(i = 0;i < respsize;i++)
+		  {
+			  respBuf[10+i] = readbuf[i + 4];
+		  }
+	  }
+	  else
+	  {
+		  printf("Entering read cycle for respsize %d\r\n",respsize);
+		  int writeHead = 0;
+		  int remainingRead = respsize;
+		  int readSize = 0;
+		  while(remainingRead > 0)
+		  {
+			  if(remainingRead > 30)
+			  {
+				  readSize = 30;
+				  remainingRead -= 30;
+				  TIS_DEBUG_LV2("Reading 30 bytes...\r\n");
+				  CS_LOW;
+				  readRegister(0x00,0x24,readSize,readbuf);
+				  CS_HIGH;
+				  for(i = 0;i < 30;i++)
+				  {
+					  respBuf[10+writeHead+i] = readbuf[i + 4];
+				  }
+				  writeHead += 30;
+				  HAL_Delay(50);
+				  /*
+				  readbuf[4] = '\x00';
+
+				  while((readbuf[4] & 0x80) != 0x10 || (readbuf[4] & 0x10) != 0x10)
+				  {
+				    errcount += 1;
+				    if(errcount > 5)
+				    {
+				  	   printf("Failure (errcount > 5)...\r\n");
+				  	   while(1){};
+				  	}
+				  	TIS_DEBUG_LV2("Long Read: Waiting for stsValid == 1 && dataAvail == 1\r\n");
+				    CS_LOW;
+				    readRegister(0x00,0x18,1,readbuf);
+				    CS_HIGH;
+				  }
+				  */
+
+			  }
+			  else
+			  {
+				  readSize = remainingRead;
+				  remainingRead = 0;
+				  TIS_DEBUG_LV2("Reading %d bytes...\r\n",readSize);
+				  CS_LOW;
+				  readRegister(0x00,0x24,readSize,readbuf);
+				  CS_HIGH;
+				  for(i = 0;i < readSize;i++)
+				  {
+					  respBuf[10+writeHead+i] = readbuf[i + 4];
+				  }
+				  HAL_Delay(50);
+				  // writeHead += 30;
+			  }
+		  }
+	  }
   }
 
+  errcount = 0;
   readbuf[4] = '\x00';
   while((readbuf[4] & 0x80) == 0 || (readbuf[4] & 0x10) != 0)
   {
 	  errcount += 1;
 	  if(errcount > 5)
 	  {
-	     printf("Failure (errcount > 5)...\r\n");
+	     printf("Failure (errcount > 5, waiting for stsvalid 1 dataavail 0)...\r\n");
 		 while(1){};
 	  }
-	  printf("Waiting for stsValid == 1 && dataAvail == 0\r\n");
+	  TIS_DEBUG_LV2("Waiting for stsValid == 1 && dataAvail == 0\r\n");
   	  CS_LOW;
   	  readRegister(0x00,0x18,1,readbuf);
   	  CS_HIGH;
   }
 
-  printf("Resetting state machine\r\n");
+  TIS_DEBUG_LV2("Resetting state machine\r\n");
   CS_LOW;
   writeRegister(0x00,0x18,1,"\x40");
   CS_HIGH;
@@ -308,6 +415,8 @@ int main(void)
   RetargetInit(&huart2);
   int uartHdr = 0;
   int temp2 = 0;
+  int respsize = 0;
+  uint8_t readbuf[TPM2_BUFSIZE];
 
   printf("ok\r\n");
   while(1)
@@ -364,11 +473,13 @@ int main(void)
 		  }
 		  else if(uartbuf[uartHdr] == 't')
 		  {
-			  uint8_t readbuf[128];
+			  printf("Entering test routine 1.");
+
 			  target_reset();
 			  printf("Waiting...\r\n");
 			  HAL_Delay(1000);
 
+			  // TPM2_STARTUP
 			  sendCommand("\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x44\x00\x00",12,readbuf);
 			  printf("OK: ");
 			  for(temp2 = 0;temp2 < 10;temp2++ )
@@ -377,8 +488,8 @@ int main(void)
 			  }
 			  printf("\r\n");
 
-			 // 80 01 00 00 00 0C 00 00 01 7B 00
-			  int respsize = sendCommand("\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x7b\x00\x10",12,readbuf);
+			  // TPM2_GETRANDOM
+			  respsize = sendCommand("\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x7b\x00\x10",12,readbuf);
 			  printf("OK: ");
 			  for(temp2 = 0;temp2 < respsize;temp2++ )
 			  {
@@ -386,8 +497,59 @@ int main(void)
 			  }
 			  printf("\r\n");
 
-			  target_reset();
+			  // target_reset();
 		  }
+		  else if(uartbuf[uartHdr] == 'v' || uartbuf[uartHdr] == 'V')
+		  {
+			  respsize = sendCommand(tbuf,tsize,readbuf);
+			  printf("OK: ");
+			  for(temp2 = 0;temp2 < respsize;temp2++ )
+			  {
+				  printf("%02x ",readbuf[temp2]);
+			  }
+			  tsize = 0;
+			  printf("\r\n");
+		  }
+		  else if(uartbuf[uartHdr] == 'z')
+		  {
+			  printf("Entering test routine 2\r\n");
+			  uint8_t readbuf[TPM2_BUFSIZE];
+			  target_reset();
+			  printf("Waiting...\r\n");
+			  HAL_Delay(1000);
+
+			  // TPM2_STARTUP
+			  sendCommand("\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x44\x00\x00",12,readbuf);
+			  printf("OK: ");
+			  for(temp2 = 0;temp2 < 10;temp2++ )
+			  {
+				  printf("%02x ",readbuf[temp2]);
+			  }
+			  printf("\r\n");
+
+			  // TPM2
+			  int respsize = sendCommand(TPM2_CC_CreatePrimary,91,readbuf);
+			  printf("OK: ");
+			  for(temp2 = 0;temp2 < respsize;temp2++ )
+			  {
+				  printf("%02x ",readbuf[temp2]);
+			  }
+			  printf("\r\n");
+
+			  HAL_Delay(100);
+
+			  respsize = sendCommand(TPM2_CC_Encrypt_Original,55,readbuf);
+			  printf("OK: ");
+			  for(temp2 = 0;temp2 < respsize;temp2++ )
+			  {
+				  printf("%02x ",readbuf[temp2]);
+			  }
+			  printf("\r\n");
+
+
+
+			  // target_reset();
+		 		  }
 		  else if(uartbuf[uartHdr] == ' ')
 		  {
 			  // pass
