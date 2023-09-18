@@ -5,7 +5,7 @@ This is an extremely bare-bones implementation of TPM2 comms over SPI, because I
 Commands:
 
 - 't' sends startup + getrandom
-- 'z' sends startup, createprimary
+- 'z' sends startup, createprimary + encrypt (RSA sign)
 - 'r' resets the device + small wait
 - '-' and '+' change chipselect off/on
 - 0a 0b 0c inserts a hexbyte into the buffer

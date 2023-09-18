@@ -5,9 +5,9 @@
 SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart2;
 
-#define TIS_DEBUG printf
+#define TIS_DEBUG  printf
 #define TIS_DEBUG_LV2 printf
-#define TPM2_BUFSIZE 280
+#define TPM2_BUFSIZE 512
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -16,9 +16,15 @@ static void MX_USART2_UART_Init(void);
 
 #define MAX_RETRIES 10
 
-uint8_t *TPM2_CC_CreatePrimary = "\x80\x02\x00\x00\x00\x5b\x00\x00\x01\x31\x40\x00\x00\x01\x00\x00\x00\x09\x40\x00\x00\x09\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x00\x00\x32\x00\x25\x00\x0b\x00\x06\x00\x72\x00\x00\x00\x06\x00\x80\x00\x43\x00\x20\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\x27\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55\x00\x00\x00\x00\x00\x00";
-uint8_t *TPM2_CC_Encrypt = "\x80\x02\x00\x00\x00\x42\x00\x00\x01\x64\x80\x00\x00\x00\x00\x00\x00\x09\x40\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x10\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff";
-uint8_t *TPM2_CC_Encrypt_Original = "\x80\x02\x00\x00\x00\x37\x00\x00\x01\x64\x80\x00\x00\x00\x00\x00\x00\x09\x40\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x10\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x05\x11\x22\x33\x44\x55";
+int CFG_NOWAIT = 0;
+
+// uint8_t *TPM2_CC_CreatePrimary = "\x80\x02\x00\x00\x00\x5b\x00\x00\x01\x31\x40\x00\x00\x01\x00\x00\x00\x09\x40\x00\x00\x09\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x00\x00\x32\x00\x25\x00\x0b\x00\x06\x00\x72\x00\x00\x00\x06\x00\x80\x00\x43\x00\x20\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\x27\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55\x00\x00\x00\x00\x00\x00";
+// uint8_t *TPM2_CC_Encrypt = "\x80\x02\x00\x00\x00\x42\x00\x00\x01\x64\x80\x00\x00\x00\x00\x00\x00\x09\x40\x00\x00\x09\x00\x00\x00\x00\x00\x00\x00\x10\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x10\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff";
+
+uint8_t *TPM2_CC_CreatePrimary = "\x80\x02\x00\x00\x00\x5f\x00\x00\x01\x31\x40\x00\x00\x01\x00\x00\x00\x09\x40\x00\x00\x09\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x00\x00\x36\x00\x01\x00\x0b\x00\x06\x00\x72\x00\x00\x00\x10\x00\x10\x08\x00\x00\x00\x00\x00\x00\x20\xe3\xb0\xc4\x42\x98\xfc\x1c\x14\x9a\xfb\xf4\xc8\x99\x6f\xb9\x24\x27\xae\x41\xe4\x64\x9b\x93\x4c\xa4\x95\x99\x1b\x78\x52\xb8\x55\x00\x00\x00\x00\x00\x00";
+#define LEN_TPM2_CC_CreatePrimary 95
+uint8_t *TPM2_CC_Encrypt = "\x80\x01\x00\x00\x00\x19\x00\x00\x01\x74\x80\x00\x00\x00\x00\x05\x11\x22\x33\x44\x55\x00\x15\x00\x00";
+#define LEN_TPM2_CC_Encrypt 25
 
 uint8_t unhexlify_nibble(uint8_t databyte)
 {
@@ -37,7 +43,7 @@ uint8_t unhexlify_nibble(uint8_t databyte)
 	}
 	else
 	{
-		printf("uh oh: unhexlify_nibble called on %02x\r\n", databyte);
+		printf("ERR: unhexlify_nibble called on %02x\r\n", databyte);
 		return 0;
 	}
 }
@@ -263,7 +269,7 @@ int sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
 		  printf("Failure (errcount > 10, postcmd)...\r\n");
 		  while(1){};
 	  }
-	  HAL_Delay(50);
+	  HAL_Delay(5000);
 	  TIS_DEBUG_LV2("Waiting for dataAvail...\r\n");
 	  CS_LOW;
 	  readRegister(0x00,0x18,1,readbuf);
@@ -290,7 +296,7 @@ int sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
   readRegister(0x00,0x18,4,NULL);
   CS_HIGH;
 
-  int respsize = readbuf[9] - 10;
+  int respsize = readbuf[8] * 0x100 + (readbuf[9] - 10);
   if(respsize == 0)
   {
 	  TIS_DEBUG_LV2("Condition: response OK, do not need further reading...\r\n");
@@ -368,20 +374,24 @@ int sendCommand(uint8_t *cmdFrame,int cmdSize,uint8_t *respBuf)
 	  }
   }
 
+  if(CFG_NOWAIT == 0)
+  {
   errcount = 0;
   readbuf[4] = '\x00';
   while((readbuf[4] & 0x80) == 0 || (readbuf[4] & 0x10) != 0)
   {
 	  errcount += 1;
-	  if(errcount > 5)
+	  if(errcount > 10)
 	  {
-	     printf("Failure (errcount > 5, waiting for stsvalid 1 dataavail 0)...\r\n");
+	     printf("Failure (errcount > 10, waiting for stsvalid 1 dataavail 0)...\r\n");
 		 while(1){};
 	  }
+	  HAL_Delay(2000);
 	  TIS_DEBUG_LV2("Waiting for stsValid == 1 && dataAvail == 0\r\n");
   	  CS_LOW;
   	  readRegister(0x00,0x18,1,readbuf);
   	  CS_HIGH;
+  }
   }
 
   TIS_DEBUG_LV2("Resetting state machine\r\n");
@@ -520,6 +530,7 @@ int main(void)
 
 			  // TPM2_STARTUP
 			  sendCommand("\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x44\x00\x00",12,readbuf);
+			  /*
 			  printf("OK: ");
 			  for(temp2 = 0;temp2 < 10;temp2++ )
 			  {
@@ -527,8 +538,13 @@ int main(void)
 			  }
 			  printf("\r\n");
 
-			  // TPM2
-			  int respsize = sendCommand(TPM2_CC_CreatePrimary,91,readbuf);
+			  */
+			  HAL_Delay(100);
+
+			  int respsize;
+
+			  respsize = sendCommand(TPM2_CC_CreatePrimary,LEN_TPM2_CC_CreatePrimary,readbuf);
+			  /*
 			  printf("OK: ");
 			  for(temp2 = 0;temp2 < respsize;temp2++ )
 			  {
@@ -536,9 +552,15 @@ int main(void)
 			  }
 			  printf("\r\n");
 
-			  HAL_Delay(100);
 
-			  respsize = sendCommand(TPM2_CC_Encrypt_Original,55,readbuf);
+			  */
+
+			  HAL_Delay(100);
+			  printf("Sending!\r\n");
+
+			  CFG_NOWAIT = 1;
+			  respsize = sendCommand(TPM2_CC_Encrypt,LEN_TPM2_CC_Encrypt,readbuf);
+			  CFG_NOWAIT = 0;
 			  printf("OK: ");
 			  for(temp2 = 0;temp2 < respsize;temp2++ )
 			  {
